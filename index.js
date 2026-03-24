@@ -7,29 +7,30 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ✅ SECURE: Key is pulled from Vercel Environment Variables
 const ai = new GoogleGenAI({ 
-    apiKey: "AIzaSyAIQEs3_bPQ_lcUX9Yv1xwvEwhN3ygokAU" 
+    apiKey: process.env.GEMINI_API_KEY 
 });
 
-// 🟢 Switch to memoryStorage (Faster on Vercel)
+// Use Memory Storage for Vercel (much faster than /tmp/)
 const upload = multer({ storage: multer.memoryStorage() });
+
+app.get('/', (req, res) => res.send('Acne AI Backend is Online 🚀'));
 
 app.post('/api/analyze', upload.single('image'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-        const answers = JSON.parse(req.body.user_answers || "{}");
         const imageBase64 = req.file.buffer.toString("base64");
+        const answers = JSON.parse(req.body.user_answers || "{}");
 
         const prompt = `
             Analyze this skin image for acne.
-            Patient Profile: ${answers.gender}, Age ${answers.age}, Skin Type: ${answers.skinType}.
-            Symptoms: Painful? ${answers.painful}, Contains Pus? ${answers.pus}, Redness? ${answers.redness}.
-            History: Location: ${answers.location}, Allergy: ${answers.allergy}, Persistent? ${answers.longDuration}.
-            Diet/Medical: Fast Food? ${answers.fastFood}, Pregnant? ${answers.pregnant}.
-
-            1. Identify acne type (BLACKHEADS, WHITEHEADS, PAPULES, PUSTULES, CYSTS, NODULAR).
-            2. Evaluate suitability of 'Clarino' (Basil, Tea Tree, Thyme, Lavender, Jojoba, Aloe).
+            Profile: ${answers.gender}, Age ${answers.age}, Skin Type: ${answers.skinType}.
+            Symptoms: Painful? ${answers.painful}, Pus? ${answers.pus}, Redness? ${answers.redness}.
+            
+            1. Identify acne type.
+            2. Evaluate suitability of 'Clarino' (Basil, Tea Tree, Thyme, Lavender).
             
             Return ONLY JSON: 
             {"diagnosis": "...", "suitability": "...", "reasoning": "...", "clinical_note": "..."}
@@ -44,18 +45,16 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
                     { inlineData: { data: imageBase64, mimeType: req.file.mimetype } }
                 ]
             }],
-            // 🟢 Forces Gemini to use more detail for small acne spots
-            generationConfig: {
-                media_resolution: "HIGH"
-            }
+            generationConfig: { media_resolution: "HIGH" }
         });
 
+        // Clean and parse JSON response
         const text = response.text.replace(/```json|```/g, "").trim();
         res.json(JSON.parse(text));
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: error.message });
+        console.error("AI Error:", error.message);
+        res.status(500).json({ error: "AI Analysis failed. Check Vercel logs." });
     }
 });
 
